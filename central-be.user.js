@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Central Blue Elves - Players 
+// @name         Central Blue Elves
 // @namespace    tw-blue-elves-script-players-minimal
 // @version      5.4
-// @description  Central de Comandos - Versão Players 
+// @description  Central de Comandos 
 // @author       APOSENTADOS
 // @match        *://br139.tribalwars.*/game.php*
 // @match        *://br139.guerrastribais.*/game.php*
