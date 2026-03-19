@@ -7,8 +7,8 @@
 // @match        *://*.tribalwars.*/game.php*
 // @match        *://*.tribalwars.*/*
 // @include      *://*.tribalwars.*/game.php*
-// @updateURL    https://github.com/Matheusfjuca/Centralatt/raw/refs/heads/main/apostribo
-// @downloadURL  https://github.com/Matheusfjuca/Centralatt/raw/refs/heads/main/apostribo
+// @updateURL    https://github.com/Matheusfjuca/Centralatt/raw/refs/heads/main/apostribo.user.js
+// @downloadURL  https://github.com/Matheusfjuca/Centralatt/raw/refs/heads/main/apostribo.user.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
