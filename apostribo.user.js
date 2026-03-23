@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Scripts APOSENTADOS Liderança
 // @namespace    tw-scripts-manager-aposentados-tribo
-// @version      2.2
+// @version      2.1
 // @description  Gerenciador Scripts APOSENTADOS Liderança
 // @author       APOSENTADOS
 // @match        *://*.tribalwars.*/game.php*
