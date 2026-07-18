@@ -4,7 +4,7 @@
 // @version      4.5
 // @description  Gerenciador Scripts APOSENTADOS Liderança
 // @author       APOSENTADOS
-// @note         Aviso de atualização melhorado: mostra o que mudou e marca versões críticas.
+// @note         Liberado IA limitada por tribo, melhorias em geral
 // @minVersion   0
 // @match        *://*.tribalwars.com.br/*
 // @updateURL    https://github.com/Matheusfjuca/Centralatt/raw/refs/heads/main/apostribo.user.js
