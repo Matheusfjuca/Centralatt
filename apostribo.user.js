@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Scripts APOSENTADOS Liderança
 // @namespace    tw-scripts-manager-aposentados-tribo
-// @version      4.5
+// @version      4.4
 // @description  Gerenciador Scripts APOSENTADOS Liderança
 // @author       APOSENTADOS
 // @note         Aviso de atualização melhorado: mostra o que mudou e marca versões críticas.
