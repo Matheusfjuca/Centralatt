@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Scripts APOSENTADOS (Unificado)
+// @name         Scripts APOSENTADOS
 // @namespace    tw-scripts-manager-aposentados-unificado
 // @version      5.1
 // @description  Gerenciador ÚNICO APOSENTADOS — abas Tribo (Liderança) e Players num painel só. Substitui os 2 gerenciadores separados.
