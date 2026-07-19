@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Scripts APOSENTADOS Liderança
 // @namespace    tw-scripts-manager-aposentados-tribo
-// @version      5.0
+// @version      5.1
 // @description  Gerenciador Scripts APOSENTADOS Liderança
 // @author       APOSENTADOS
 // @note         Aviso de atualização melhorado: mostra o que mudou e marca versões críticas.
 // @minVersion   0
 // @match        *://*.tribalwars.com.br/*
-// @updateURL    https://github.com/Matheusfjuca/Centralatt/raw/refs/heads/main/apostribo.user.js
-// @downloadURL  https://github.com/Matheusfjuca/Centralatt/raw/refs/heads/main/apostribo.user.js
+// @updateURL    https://github.com/Matheusfjuca/Centralatt/raw/refs/heads/main/aposunificado.user.js
+// @downloadURL  https://github.com/Matheusfjuca/Centralatt/raw/refs/heads/main/aposunificado.user.js
 // @connect      aposentados.centraltw.com.br
 // @connect      github.com
 // @connect      raw.githubusercontent.com
