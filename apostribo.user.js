@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Scripts APOSENTADOS Liderança
+// @name         Scripts APOSENTADOS
 // @namespace    tw-scripts-manager-aposentados-tribo
 // @version      5.1
 // @description  Gerenciador Scripts APOSENTADOS Liderança
