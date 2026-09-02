@@ -377,7 +377,15 @@
             '<td class="cunhNum"><span class="icon header wood"></span> <b id="cunh-tm">0</b></td>' +
             '<td class="cunhNum"><span class="icon header stone"></span> <b id="cunh-ta">0</b></td>' +
             '<td class="cunhNum"><span class="icon header iron"></span> <b id="cunh-tf">0</b></td>' +
-            '</tr></table></div>';
+            '</tr></table></div>' +
+            '<div style="margin:0 0 8px;padding:6px;background:#ece0c0;border-radius:4px">' +
+            '<button type="button" class="btn btn-confirm-yes" id="cunh-tudo" ' +
+            'style="font-weight:bold">Enviar tudo</button> ' +
+            '<button type="button" class="btn" id="cunh-parar" style="display:none">Parar</button> ' +
+            '<span style="margin-left:8px">pausa entre envios: ' +
+            '<input type="text" id="cunh-pausa" size="4" value="' + PAUSA_PADRAO + '"> ms</span> ' +
+            '<span id="cunh-status" style="margin-left:10px;color:#603000"></span>' +
+            '</div>';
 
         var html = CSS +
             '<div id="cunhagem-painel">' + topo + barra +
@@ -423,12 +431,21 @@
         document.getElementById('cunhagem-lista').addEventListener('click', function (ev) {
             var b = ev.target;
             if (!b || !b.classList || !b.classList.contains('cunh-enviar')) return;
+            // Clique manual durante o lote confundiria a contagem e mandaria dois ao mesmo tempo.
+            if (lote.rodando) { UI.ErrorMessage('O lote está rodando. Pare antes de enviar à mão.'); return; }
+            b.removeAttribute('data-falhou');      // tentativa manual limpa a marca de falha
             enviar(b);
         });
+
+        document.getElementById('cunh-tudo').onclick = confirmarLote;
+        document.getElementById('cunh-parar').onclick = function () {
+            lote.parar = true;
+            pintarLote('Parando depois do envio em curso…');
+        };
     }
 
     // ---------- envio ----------
-    function enviar(botao) {
+    function enviar(botao, aoTerminar) {
         var i = botao.getAttribute('data-i');
         var a = aldeias[parseInt(i, 10)];
         var q = {
@@ -448,7 +465,11 @@
             if (tr) tr.className = 'cunhErro';
             botao.disabled = false;
             botao.value = 'Tentar de novo';
+            // Marca para o lote NÃO reeleger esta linha: como a falha devolve o botão, sem esta
+            // marca o "Enviar tudo" escolheria a mesma aldeia para sempre.
+            botao.setAttribute('data-falhou', '1');
             UI.ErrorMessage('Não confirmei o envio de ' + a.nome + ': ' + motivo);
+            if (aoTerminar) aoTerminar(false, motivo);
         }
 
         /*
@@ -488,28 +509,179 @@
                 if (!document.querySelectorAll('#cunhagem-lista tr').length) {
                     UI.SuccessMessage('Acabou a fila de envios.');
                 }
+                if (aoTerminar) aoTerminar(true, null);
             },
             false                                   // assinatura conhecida do jogo; não invento outra
         );
     }
 
-    // ---------- início ----------
-    var urlLista = game_data.player.sitter > 0
-        ? 'game.php?t=' + game_data.player.id + '&screen=overview_villages&mode=prod&page=-1'
-        : 'game.php?screen=overview_villages&mode=prod&page=-1';
+    // ---------- envio em lote ----------
+    /*
+     * Despacha as aldeias uma de cada vez, nunca em paralelo.
+     *
+     * O intervalo entre envios existe para não martelar o servidor com dezenas de requisições em
+     * rajada. É uma pausa honesta e visível, ajustável na tela — não é disfarce: o lote continua
+     * sendo exatamente a mesma sequência de cliques que você faria à mão, só que sozinha.
+     *
+     * Três freios, porque isto move recurso e não tem desfazer:
+     *   - uma confirmação única, mostrando o total exato antes de começar;
+     *   - botão Parar, que interrompe depois do envio em curso;
+     *   - parada automática em 3 falhas seguidas, para não insistir contra um problema real.
+     */
+    var lote = { rodando: false, parar: false, ok: 0, falhas: 0, seguidas: 0 };
+    var PAUSA_PADRAO = 1500;
 
-    $.get(urlLista).done(function (pagina) {
-        var doc = new DOMParser().parseFromString(pagina, 'text/html');
-        var n = coletar(doc);
-        if (!n) {
-            UI.ErrorMessage('Não consegui ler nenhuma aldeia da visão de produção.' +
-                (problemas.length ? ' Problemas: ' + problemas[0].motivo : ''));
-            return;
+    function pausaEscolhida() {
+        var el = document.getElementById('cunh-pausa');
+        var v = el ? parseInt(el.value, 10) : NaN;
+        if (!isFinite(v) || v < 300) return PAUSA_PADRAO;      // piso: rajada não ajuda ninguém
+        return Math.min(v, 60000);
+    }
+
+    function botoesPendentes() {
+        return [].slice.call(
+            document.querySelectorAll('#cunhagem-lista .cunh-enviar:not([disabled]):not([data-falhou])'));
+    }
+
+    function pintarLote(txt) {
+        var el = document.getElementById('cunh-status');
+        if (el) el.innerHTML = txt;
+    }
+
+    function terminarLote(motivo) {
+        lote.rodando = false;
+        var b = document.getElementById('cunh-tudo');
+        if (b) { b.disabled = false; b.textContent = 'Enviar tudo'; }
+        var p = document.getElementById('cunh-parar');
+        if (p) p.style.display = 'none';
+        pintarLote('<b>Lote encerrado</b> (' + motivo + ') — ' + lote.ok + ' enviada(s)' +
+            (lote.falhas ? ', <span style="color:#a00">' + lote.falhas + ' sem confirmação</span>' : '') + '.');
+    }
+
+    function passoDoLote() {
+        if (!lote.rodando) return;
+        if (lote.parar) { terminarLote('parado por você'); return; }
+        var restantes = botoesPendentes();
+        if (!restantes.length) { terminarLote('fila vazia'); return; }
+        var total = lote.ok + lote.falhas + restantes.length;
+        pintarLote('Enviando <b>' + (lote.ok + lote.falhas + 1) + ' de ' + total + '</b>…');
+        enviar(restantes[0], function (deuCerto) {
+            if (deuCerto) { lote.ok++; lote.seguidas = 0; }
+            else { lote.falhas++; lote.seguidas++; }
+            if (lote.seguidas >= 3) {
+                terminarLote('3 falhas seguidas — parei para você conferir');
+                return;
+            }
+            setTimeout(passoDoLote, pausaEscolhida());
+        });
+    }
+
+    function confirmarLote() {
+        var pend = botoesPendentes();
+        if (!pend.length) { UI.ErrorMessage('Não há envio pendente.'); return; }
+        var t = { m: 0, a: 0, f: 0 };
+        pend.forEach(function (b) {
+            t.m += parseInt(b.getAttribute('data-m'), 10) || 0;
+            t.a += parseInt(b.getAttribute('data-a'), 10) || 0;
+            t.f += parseInt(b.getAttribute('data-f'), 10) || 0;
+        });
+        // Confirmação pela janela do jogo, nunca por `confirm()`: o nativo trava a página inteira.
+        Dialog.show('cunhagem-lote',
+            '<div style="max-width:520px">' +
+            '<h2 class="popup_box_header" style="text-align:center">Enviar tudo?</h2><hr>' +
+            '<p style="text-align:center">Vão sair <b>' + pend.length + '</b> transportes para<br>' +
+            '<b>' + alvo.nome + '</b> (' + alvo.x + '|' + alvo.y + ')</p>' +
+            '<p style="text-align:center;font-size:14px">' +
+            '<span class="icon header wood"></span> <b>' + fmt(t.m) + '</b> &nbsp; ' +
+            '<span class="icon header stone"></span> <b>' + fmt(t.a) + '</b> &nbsp; ' +
+            '<span class="icon header iron"></span> <b>' + fmt(t.f) + '</b></p>' +
+            '<p style="text-align:center;color:#666;font-size:11px">Um de cada vez, com pausa de ' +
+            (pausaEscolhida() / 1000).toFixed(1) + ' s. Dá para parar no meio.<br>' +
+            'Recurso enviado não volta.</p>' +
+            '<p style="text-align:center">' +
+            '<input type="button" class="btn btn-confirm-yes" id="cunh-lote-sim" value="Enviar os ' +
+            pend.length + '"> &nbsp; ' +
+            '<input type="button" class="btn" id="cunh-lote-nao" value="Cancelar"></p></div>');
+
+        document.getElementById('cunh-lote-nao').onclick = function () {
+            var f = document.getElementsByClassName('popup_box_close');
+            if (f[0]) f[0].click();
+        };
+        document.getElementById('cunh-lote-sim').onclick = function () {
+            var f = document.getElementsByClassName('popup_box_close');
+            if (f[0]) f[0].click();
+            lote = { rodando: true, parar: false, ok: 0, falhas: 0, seguidas: 0 };
+            var b = document.getElementById('cunh-tudo');
+            if (b) { b.disabled = true; b.textContent = 'Enviando…'; }
+            var p = document.getElementById('cunh-parar');
+            if (p) p.style.display = '';
+            passoDoLote();
+        };
+    }
+
+    // ---------- carregar a lista e começar ----------
+    function comecar(botao) {
+        if (botao) { botao.disabled = true; botao.textContent = 'Lendo suas aldeias…'; }
+        function devolverBotao() {
+            if (botao) { botao.disabled = false; botao.innerHTML = ROTULO_BOTAO; }
         }
-        // Só agora pergunta a coordenada: se as duas coisas correrem juntas, responder rápido
-        // monta a lista vazia.
-        pedirCoordenada();
-    }).fail(function () {
-        UI.ErrorMessage('Falhou ao carregar a visão de produção das aldeias.');
-    });
+        var urlLista = game_data.player.sitter > 0
+            ? 'game.php?t=' + game_data.player.id + '&screen=overview_villages&mode=prod&page=-1'
+            : 'game.php?screen=overview_villages&mode=prod&page=-1';
+
+        $.get(urlLista).done(function (pagina) {
+            devolverBotao();
+            var doc = new DOMParser().parseFromString(pagina, 'text/html');
+            var n = coletar(doc);
+            if (!n) {
+                UI.ErrorMessage('Não consegui ler nenhuma aldeia da visão de produção.' +
+                    (problemas.length ? ' Problemas: ' + problemas[0].motivo : ''));
+                return;
+            }
+            // Só agora pergunta a coordenada: se as duas coisas correrem juntas, responder rápido
+            // monta a lista vazia.
+            pedirCoordenada();
+        }).fail(function () {
+            devolverBotao();
+            UI.ErrorMessage('Falhou ao carregar a visão de produção das aldeias.');
+        });
+    }
+
+    // ---------- entrada ----------
+    /*
+     * Duas portas de entrada, porque há dois jeitos de usar:
+     *
+     *   Academia (screen=snob) — o script é injetado pelo gerenciador em toda visita à tela, e
+     *   sair varrendo 100+ aldeias sem ninguém pedir seria abuso. Aqui ele só planta o botão.
+     *
+     *   Qualquer outro lugar — veio de favorito/barra, ou seja, foi chamado de propósito: roda
+     *   direto, sem passo a mais.
+     *
+     * O `id` do botão é o que o gerenciador usa como `initElement` para saber que já carregou.
+     */
+    var ROTULO_BOTAO = '<span class="icon header wood"></span>' +
+        '<span class="icon header stone"></span>' +
+        '<span class="icon header iron"></span> Cunhagem APOSENTADOS';
+
+    function plantarBotao() {
+        if (document.getElementById('cunh-btn')) return;
+        var alvo = document.getElementById('content_value') ||
+            document.getElementById('contentContainer') ||
+            document.getElementById('mobileHeader');
+        if (!alvo) return;
+        var cx = document.createElement('div');
+        cx.style.cssText = 'margin:8px 0;text-align:center';
+        var b = document.createElement('button');
+        b.id = 'cunh-btn';
+        b.type = 'button';
+        b.className = 'btn btn-confirm-yes';
+        b.style.cssText = 'font-size:14px;font-weight:bold;padding:8px 16px;cursor:pointer';
+        b.innerHTML = ROTULO_BOTAO;
+        b.onclick = function () { comecar(b); };
+        cx.appendChild(b);
+        alvo.insertBefore(cx, alvo.firstChild);
+    }
+
+    if (/screen=snob/.test(location.href)) plantarBotao();
+    else comecar(null);
 })();
