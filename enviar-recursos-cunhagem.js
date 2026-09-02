@@ -45,6 +45,7 @@
 
     var aldeias = [];
     var problemas = [];
+    var duplicadas = 0;
     var alvo = null;                 // { id, nome, imagem, jogador, pontos, x, y }
     var enviado = { madeira: 0, argila: 0, ferro: 0 };
 
@@ -116,6 +117,14 @@
         var nomes = [].slice.call(doc.querySelectorAll('.quickedit-vn'));
         aldeias = [];
         problemas = [];
+        /*
+         * Trava contra aldeia repetida. Se a página listar a mesma aldeia duas vezes (paginação
+         * somada, marcação de dois layouts na mesma resposta), sairiam DOIS botões despachando da
+         * MESMA origem — e o segundo mandaria recurso de novo. Aqui a segunda ocorrência é
+         * descartada e contada, para aparecer no aviso em vez de passar batido.
+         */
+        var vistos = {};
+        duplicadas = 0;
 
         nomes.forEach(function (vn) {
             var nome = String(vn.innerText || vn.textContent || '').trim();
@@ -168,9 +177,14 @@
             var coord = (nome.match(/(\d+)\|(\d+)/) || null);
             if (!coord) return falha('não achei a coordenada no nome');
 
+            var id = vn.dataset ? vn.dataset.id : null;
+            var chave = id || nome;
+            if (vistos[chave]) { duplicadas++; return; }
+            vistos[chave] = true;
+
             var link = vn.querySelector('a');
             aldeias.push({
-                id: vn.dataset ? vn.dataset.id : null,
+                id: id,
                 nome: nome,
                 url: link ? link.href : null,
                 x: parseInt(coord[1], 10),
@@ -233,6 +247,18 @@
         '.cunhLink:hover{text-decoration:underline}' +
         '.cunhTit{font-size:14px;font-weight:bold;color:#603000}' +
         '.cunhNum{text-align:right;font-variant-numeric:tabular-nums}' +
+        /*
+         * No celular a tabela é mais larga que a tela e o jogo não deixa arrastar de lado — daí a
+         * necessidade de deitar o aparelho. A rolagem própria resolve, e a coluna Destino sai:
+         * ela repete em toda linha o que já está escrito no topo, então é a primeira a sobrar.
+         */
+        '.cunhRolar{overflow-x:auto;-webkit-overflow-scrolling:touch}' +
+        '@media (max-width:900px){' +
+        '  #cunhagem-painel{padding:5px;font-size:11px}' +
+        '  .cunhTab td,.cunhTab th{padding:3px 4px}' +
+        '  .cunhDest{display:none}' +
+        '  .cunhTab{min-width:420px}' +
+        '}' +
         '</style>';
 
     // ---------- perguntar a coordenada ----------
@@ -268,7 +294,16 @@
                 return;
             }
             var v = json.villages[0];
-            alvo = { id: v.id, nome: v.name, imagem: v.image, jogador: v.player_name, pontos: v.points, x: v.x, y: v.y };
+            /*
+             * `points` chega ora como número, ora como texto formatado ("6.720"), ora ausente —
+             * depende da tela. Passar isso direto pro formatador imprimia "NaN pontos". Aqui vira
+             * número de verdade, e quando não dá simplesmente não se mostra.
+             */
+            alvo = {
+                id: v.id, nome: v.name, imagem: v.image, jogador: v.player_name,
+                pontos: limparNumero(v.points),
+                x: parseInt(v.x, 10), y: parseInt(v.y, 10)
+            };
             montarLista();
         }).fail(function () {
             UI.ErrorMessage('Falhou ao consultar a coordenada ' + coord + '.');
@@ -297,7 +332,7 @@
             enviaveis++;
             linhas += '<tr id="cunh-linha-' + i + '" class="' + (i % 2 ? 'cunhA' : 'cunhB') + '">' +
                 '<td><a href="' + (a.url || '#') + '" class="cunhLink">' + a.nome + '</a></td>' +
-                '<td><span class="cunhLink">' + alvo.nome + '</span></td>' +
+                '<td class="cunhDest"><span class="cunhLink">' + alvo.nome + '</span></td>' +
                 '<td style="text-align:center">' + distancia(alvo.x, alvo.y, a.x, a.y) + '</td>' +
                 '<td style="text-align:right">' + fmt(q.madeira) + ' <span class="icon header wood"></span></td>' +
                 '<td style="text-align:right">' + fmt(q.argila) + ' <span class="icon header stone"></span></td>' +
@@ -310,21 +345,27 @@
 
         var avisoProblemas = '';
         if (problemas.length) {
-            avisoProblemas = '<tr><td colspan="7" class="cunhErro">⚠️ ' + problemas.length +
+            avisoProblemas += '<tr><td colspan="7" class="cunhErro">⚠️ ' + problemas.length +
                 ' aldeia(s) ficaram DE FORA porque não consegui ler os dados: ' +
                 problemas.slice(0, 5).map(function (p) { return p.nome + ' (' + p.motivo + ')'; }).join('; ') +
                 (problemas.length > 5 ? ' …' : '') +
                 '. Nenhum envio foi calculado para elas.</td></tr>';
         }
+        if (duplicadas) {
+            avisoProblemas += '<tr><td colspan="7" class="cunhErro">⚠️ ' + duplicadas +
+                ' aldeia(s) apareceram repetidas na listagem e a segunda cópia foi descartada. ' +
+                'Sem isso haveria dois botões despachando da mesma origem.</td></tr>';
+        }
 
         var topo =
             '<div class="cunhTit">⚒️ Cunhagem APOSENTADOS</div>' +
             '<div style="margin:2px 0 8px;color:#603000">Destino: <b>' + alvo.nome + '</b> (' +
-            alvo.x + '|' + alvo.y + ') · ' + alvo.jogador + ' · ' + fmt(alvo.pontos) + ' pontos · ' +
-            '<b>' + enviaveis + '</b> aldeia(s) com recurso a enviar</div>';
+            alvo.x + '|' + alvo.y + ') · ' + alvo.jogador +
+            (alvo.pontos ? ' · ' + fmt(alvo.pontos) + ' pontos' : '') + ' · ' +
+            '<b>' + enviaveis + '</b> de ' + aldeias.length + ' aldeia(s) com recurso a enviar</div>';
 
         var barra =
-            '<table class="cunhTab" style="margin-bottom:8px">' +
+            '<div class="cunhRolar"><table class="cunhTab" style="margin-bottom:8px">' +
             '<tr><td class="cunhH">Enviar para</td><td class="cunhH">Manter no armazém</td>' +
             '<td class="cunhH" colspan="2">&nbsp;</td>' +
             '<td class="cunhH" colspan="3" style="text-align:right">Já enviado</td></tr>' +
@@ -336,19 +377,19 @@
             '<td class="cunhNum"><span class="icon header wood"></span> <b id="cunh-tm">0</b></td>' +
             '<td class="cunhNum"><span class="icon header stone"></span> <b id="cunh-ta">0</b></td>' +
             '<td class="cunhNum"><span class="icon header iron"></span> <b id="cunh-tf">0</b></td>' +
-            '</tr></table>';
+            '</tr></table></div>';
 
         var html = CSS +
             '<div id="cunhagem-painel">' + topo + barra +
-            '<table class="cunhTab">' +
+            '<div class="cunhRolar"><table class="cunhTab">' +
             avisoProblemas +
-            '<tr><th class="cunhH">Origem</th><th class="cunhH">Destino</th>' +
+            '<tr><th class="cunhH">Origem</th><th class="cunhH cunhDest">Destino</th>' +
             '<th class="cunhH" style="text-align:center">Dist.</th>' +
             '<th class="cunhH" style="text-align:right">Madeira</th>' +
             '<th class="cunhH" style="text-align:right">Argila</th>' +
             '<th class="cunhH" style="text-align:right">Ferro</th>' +
             '<th class="cunhH" style="text-align:center">Ação</th></tr>' +
-            '<tbody id="cunhagem-lista">' + linhas + '</tbody></table>' +
+            '<tbody id="cunhagem-lista">' + linhas + '</tbody></table></div>' +
             (enviaveis ? '' : '<div class="cunhErro" style="padding:6px;margin-top:6px">Nenhuma aldeia ' +
                 'tem recurso disponível acima do limite escolhido.</div>') +
             '</div>';
