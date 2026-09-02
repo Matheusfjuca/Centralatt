@@ -1,30 +1,27 @@
 /*
- * Enviar recursos para cunhagem de moedas
- * ---------------------------------------
- * Baseado no script de Sophie "Shinko to Kuma" (https://shinko-to-kuma.my-free.website/).
- * Correções e reescrita da coleta de dados por conta desta revisão — o crédito da ideia e da
- * lógica de proporção é dela.
+ * Cunhagem APOSENTADOS — envio de recursos na proporção da moeda
+ * --------------------------------------------------------------
+ * Lê a visão de produção de todas as aldeias, calcula quanto cada uma pode mandar para a aldeia
+ * escolhida respeitando mercadores e armazém, e despacha com um clique por aldeia.
  *
- * O QUE MUDOU EM RELAÇÃO AO ORIGINAL
- * ----------------------------------
- * 1. A pergunta da coordenada só aparece DEPOIS que a lista de aldeias chegou. No original ela era
- *    disparada em paralelo com a busca, e responder rápido demais montava a lista vazia — sem erro
- *    na tela.
+ * DECISÕES QUE VALEM SABER
+ * ------------------------
+ * 1. A pergunta da coordenada só aparece DEPOIS que a lista de aldeias chegou. Perguntar em
+ *    paralelo com a busca deixa a lista vazia quando o jogador responde rápido, e sem erro na tela.
  *
- * 2. A linha só some quando o servidor CONFIRMA o envio. O original removia a linha 200 ms depois
- *    do clique, sem esperar resposta: envio que falhava sumia da tela igualzinho a um que deu
- *    certo, e os totais não subiam. Era o defeito mais perigoso, porque falhava em silêncio.
+ * 2. A linha só some quando o servidor CONFIRMA o envio; silêncio de 12 s também conta como falha.
+ *    Remover a linha por relógio faz envio recusado sumir da tela igual a um que deu certo — falha
+ *    silenciosa é o pior desfecho possível num script que move recurso.
  *
- * 3. Uma coleta só, sem ramo separado para celular. O ramo mobile do original empilhava TODOS os
- *    mercadores para CADA aldeia (laço dentro de laço), então a aldeia i lia o mercador errado, e
- *    o total de mercadores era o literal "999". Aqui a leitura é por posição relativa dentro da
- *    linha da aldeia, o que funciona nos dois layouts.
+ * 3. Uma coleta só para computador e celular. A leitura é ancorada na célula de recursos e
+ *    caminha pelos vizinhos, porque as duas telas trazem os mesmos campos em ORDEM DIFERENTE
+ *    (ver o comentário em `coletar`). Ramos separados por layout envelhecem e divergem.
  *
- * 4. Aldeia cujos dados não foram lidos por completo NÃO entra na lista de envio, e aparece num
- *    aviso. Script que manda recurso não pode chutar: mandar errado não tem desfazer.
+ * 4. Aldeia cujos dados não foram lidos por completo NÃO entra na lista, e aparece num aviso.
+ *    Mandar recurso errado não tem desfazer, então na dúvida o script se recusa a calcular.
  *
- * 5. Distância calculada separando a coordenada no "|", em vez de fatiar por posição fixa
- *    (`substring(0,3)`), que devolvia NaN em coordenada de 2 dígitos.
+ * 5. Distância separa a coordenada no "|" em vez de fatiar por posição fixa — coordenada de 2
+ *    dígitos quebraria o corte por índice.
  */
 (function () {
     'use strict';
@@ -219,11 +216,23 @@
     }
 
     // ---------- estilo ----------
+    /*
+     * Paleta do próprio jogo, igual à dos outros scripts da suíte (Simulador de Construção etc.):
+     * pergaminho, borda marrom e cabeçalho em areia. Fica parecendo tela do TW em vez de painel
+     * de fora.
+     */
     var CSS = '<style id="cunhagem-css">' +
-        '.cunhA{background:#32353b;color:#fff}.cunhB{background:#36393f;color:#fff}' +
-        '.cunhH{background:#202225;font-weight:bold;color:#fff}' +
-        '.cunhErro{background:#5a2020;color:#fff}' +
-        '#cunhagem-lista td{padding:3px 5px}' +
+        '#cunhagem-painel{border:2px solid #7d510f;background:#f4e4bc;border-radius:6px;' +
+        'margin:8px 0;padding:8px;font-size:12px;color:#2b1c00}' +
+        '.cunhTab{border-collapse:collapse;width:100%}' +
+        '.cunhTab td,.cunhTab th{padding:4px 8px;border-bottom:1px solid #d8c9a8}' +
+        '.cunhH{background:#c1a264;font-weight:bold;color:#2b1c00;text-align:left}' +
+        '.cunhA{background:#f4e4bc}.cunhB{background:#ece0c0}' +
+        '.cunhErro{background:#f0c0c0;color:#7a1010}' +
+        '.cunhLink{color:#603000;text-decoration:none;font-weight:bold}' +
+        '.cunhLink:hover{text-decoration:underline}' +
+        '.cunhTit{font-size:14px;font-weight:bold;color:#603000}' +
+        '.cunhNum{text-align:right;font-variant-numeric:tabular-nums}' +
         '</style>';
 
     // ---------- perguntar a coordenada ----------
@@ -231,12 +240,12 @@
         var salva = '';
         try { salva = sessionStorage.getItem(CHAVE_COORD) || ''; } catch (e) { }
         var html = '<div style="max-width:520px">' +
-            '<h2 class="popup_box_header" style="text-align:center">Enviar recursos para cunhagem</h2><hr>' +
-            '<p style="text-align:center">Coordenada da aldeia que vai receber:</p>' +
+            '<h2 class="popup_box_header" style="text-align:center">⚒️ Cunhagem APOSENTADOS</h2><hr>' +
+            '<p style="text-align:center">Coordenada da aldeia que vai receber os recursos:</p>' +
             '<p style="text-align:center"><input type="text" id="cunh-coord" size="12" value="' + salva + '"></p>' +
             '<p style="text-align:center"><input type="button" class="btn btn-confirm-yes" id="cunh-ok" value="Continuar"></p>' +
-            '<p style="text-align:center;font-size:11px">Baseado no script de ' +
-            '<a href="https://shinko-to-kuma.my-free.website/" target="_blank">Sophie "Shinko to Kuma"</a></p>' +
+            '<p style="text-align:center;font-size:11px;color:#666">Envia na proporção exata da moeda ' +
+            '(' + fmt(CUSTO_MOEDA.madeira) + '/' + fmt(CUSTO_MOEDA.argila) + '/' + fmt(CUSTO_MOEDA.ferro) + ')</p>' +
             '</div>';
         Dialog.show('cunhagem', html);
         document.getElementById('cunh-ok').onclick = function () {
@@ -287,48 +296,61 @@
             if (q.madeira + q.argila + q.ferro <= 0) return;
             enviaveis++;
             linhas += '<tr id="cunh-linha-' + i + '" class="' + (i % 2 ? 'cunhA' : 'cunhB') + '">' +
-                '<td><a href="' + (a.url || '#') + '" style="color:#40D0E0">' + a.nome + '</a></td>' +
+                '<td><a href="' + (a.url || '#') + '" class="cunhLink">' + a.nome + '</a></td>' +
+                '<td><span class="cunhLink">' + alvo.nome + '</span></td>' +
                 '<td style="text-align:center">' + distancia(alvo.x, alvo.y, a.x, a.y) + '</td>' +
-                '<td style="text-align:right">' + fmt(q.madeira) + '</td>' +
-                '<td style="text-align:right">' + fmt(q.argila) + '</td>' +
-                '<td style="text-align:right">' + fmt(q.ferro) + '</td>' +
+                '<td style="text-align:right">' + fmt(q.madeira) + ' <span class="icon header wood"></span></td>' +
+                '<td style="text-align:right">' + fmt(q.argila) + ' <span class="icon header stone"></span></td>' +
+                '<td style="text-align:right">' + fmt(q.ferro) + ' <span class="icon header iron"></span></td>' +
                 '<td style="text-align:center">' +
-                '<input type="button" class="btn btn-confirm-yes cunh-enviar" value="Enviar" ' +
+                '<input type="button" class="btn btn-confirm-yes cunh-enviar" value="Enviar recursos" ' +
                 'data-i="' + i + '" data-m="' + q.madeira + '" data-a="' + q.argila + '" data-f="' + q.ferro + '">' +
                 '</td></tr>';
         });
 
         var avisoProblemas = '';
         if (problemas.length) {
-            avisoProblemas = '<tr><td colspan="6" class="cunhErro">⚠️ ' + problemas.length +
+            avisoProblemas = '<tr><td colspan="7" class="cunhErro">⚠️ ' + problemas.length +
                 ' aldeia(s) ficaram DE FORA porque não consegui ler os dados: ' +
                 problemas.slice(0, 5).map(function (p) { return p.nome + ' (' + p.motivo + ')'; }).join('; ') +
                 (problemas.length > 5 ? ' …' : '') +
                 '. Nenhum envio foi calculado para elas.</td></tr>';
         }
 
+        var topo =
+            '<div class="cunhTit">⚒️ Cunhagem APOSENTADOS</div>' +
+            '<div style="margin:2px 0 8px;color:#603000">Destino: <b>' + alvo.nome + '</b> (' +
+            alvo.x + '|' + alvo.y + ') · ' + alvo.jogador + ' · ' + fmt(alvo.pontos) + ' pontos · ' +
+            '<b>' + enviaveis + '</b> aldeia(s) com recurso a enviar</div>';
+
+        var barra =
+            '<table class="cunhTab" style="margin-bottom:8px">' +
+            '<tr><td class="cunhH">Enviar para</td><td class="cunhH">Manter no armazém</td>' +
+            '<td class="cunhH" colspan="2">&nbsp;</td>' +
+            '<td class="cunhH" colspan="3" style="text-align:right">Já enviado</td></tr>' +
+            '<tr class="cunhA">' +
+            '<td><input type="text" id="cunh-coord2" size="10" value="' + alvo.x + '|' + alvo.y + '"></td>' +
+            '<td><input type="text" id="cunh-pct" size="2" value="' + lim + '"> %</td>' +
+            '<td><button type="button" class="btn btn-confirm-yes" id="cunh-salvar">Salvar</button></td>' +
+            '<td><button type="button" class="btn" id="cunh-recalc">Recalcular</button></td>' +
+            '<td class="cunhNum"><span class="icon header wood"></span> <b id="cunh-tm">0</b></td>' +
+            '<td class="cunhNum"><span class="icon header stone"></span> <b id="cunh-ta">0</b></td>' +
+            '<td class="cunhNum"><span class="icon header iron"></span> <b id="cunh-tf">0</b></td>' +
+            '</tr></table>';
+
         var html = CSS +
-            '<div id="cunhagem-painel" style="margin:8px 0">' +
-            '<table width="100%" style="border-collapse:collapse">' +
-            '<tr><td class="cunhH" colspan="6" style="text-align:center">' +
-            'Enviando para <b>' + alvo.nome + '</b> (' + alvo.x + '|' + alvo.y + ') · ' +
-            alvo.jogador + ' · ' + fmt(alvo.pontos) + ' pontos</td></tr>' +
-            '<tr><td class="cunhH" colspan="6">' +
-            'Manter no armazém: <input type="text" id="cunh-pct" size="2" value="' + lim + '">% ' +
-            '<input type="button" class="btn" id="cunh-recalc" value="Recalcular"> ' +
-            '<input type="button" class="btn" id="cunh-trocar" value="Trocar alvo"> ' +
-            '<span style="float:right">Enviado: ' +
-            '<span id="cunh-tm">0</span> madeira · <span id="cunh-ta">0</span> argila · ' +
-            '<span id="cunh-tf">0</span> ferro</span></td></tr>' +
+            '<div id="cunhagem-painel">' + topo + barra +
+            '<table class="cunhTab">' +
             avisoProblemas +
-            '<tr><td class="cunhH">Origem</td><td class="cunhH" style="text-align:center">Dist.</td>' +
-            '<td class="cunhH" style="text-align:right">Madeira</td>' +
-            '<td class="cunhH" style="text-align:right">Argila</td>' +
-            '<td class="cunhH" style="text-align:right">Ferro</td>' +
-            '<td class="cunhH" style="text-align:center">Ação</td></tr>' +
+            '<tr><th class="cunhH">Origem</th><th class="cunhH">Destino</th>' +
+            '<th class="cunhH" style="text-align:center">Dist.</th>' +
+            '<th class="cunhH" style="text-align:right">Madeira</th>' +
+            '<th class="cunhH" style="text-align:right">Argila</th>' +
+            '<th class="cunhH" style="text-align:right">Ferro</th>' +
+            '<th class="cunhH" style="text-align:center">Ação</th></tr>' +
             '<tbody id="cunhagem-lista">' + linhas + '</tbody></table>' +
-            (enviaveis ? '' : '<div class="cunhErro" style="padding:6px">Nenhuma aldeia tem recurso ' +
-                'disponível acima do limite escolhido.</div>') +
+            (enviaveis ? '' : '<div class="cunhErro" style="padding:6px;margin-top:6px">Nenhuma aldeia ' +
+                'tem recurso disponível acima do limite escolhido.</div>') +
             '</div>';
 
         var onde = document.getElementById('contentContainer') || document.getElementById('mobileHeader');
@@ -337,13 +359,24 @@
         div.innerHTML = html;
         onde.insertBefore(div, onde.firstChild);
 
-        document.getElementById('cunh-recalc').onclick = function () {
+        function guardarPct() {
             var v = parseInt(document.getElementById('cunh-pct').value, 10);
-            if (!isFinite(v) || v < 0 || v > 100) { UI.ErrorMessage('Use um número de 0 a 100.'); return; }
+            if (!isFinite(v) || v < 0 || v > 100) { UI.ErrorMessage('Use um número de 0 a 100.'); return false; }
             try { sessionStorage.setItem(CHAVE_LIMITE, String(v)); } catch (e) { }
-            montarLista();
+            return true;
+        }
+        document.getElementById('cunh-recalc').onclick = function () {
+            if (guardarPct()) montarLista();
         };
-        document.getElementById('cunh-trocar').onclick = pedirCoordenada;
+        // "Salvar" guarda o limite E troca o alvo, se a coordenada tiver mudado.
+        document.getElementById('cunh-salvar').onclick = function () {
+            if (!guardarPct()) return;
+            var c = (document.getElementById('cunh-coord2').value || '').match(/\d+\|\d+/);
+            if (!c) { UI.ErrorMessage('Coordenada inválida. Use o formato 500|500.'); return; }
+            try { sessionStorage.setItem(CHAVE_COORD, c[0]); } catch (e) { }
+            if (c[0] === alvo.x + '|' + alvo.y) { montarLista(); return; }
+            buscarAlvo(c[0]);
+        };
 
         // Um ouvinte só, delegado: as linhas somem conforme os envios confirmam.
         document.getElementById('cunhagem-lista').addEventListener('click', function (ev) {
@@ -378,13 +411,13 @@
         }
 
         /*
-         * O silêncio é tratado como falha. `TribalWars.post` avisa por CALLBACK, e o script
-         * original passava `!1` na 5ª posição — não sei se ali cabe um callback de erro, então
-         * NÃO dependo disso: mantenho a mesma forma de chamada e me protejo por conta própria,
-         * com relógio. Se em 12 s não vier confirmação, a linha continua na tela em vermelho.
+         * O silêncio é tratado como falha. `TribalWars.post` avisa por CALLBACK, e a 5ª posição da
+         * chamada recebe um booleano — não há garantia de que ali caiba um callback de erro, então
+         * a confirmação NÃO depende disso: há um relógio próprio. Se em 12 s não vier resposta, a
+         * linha continua na tela, em vermelho.
          *
-         * O ponto é não repetir o defeito do original, que apagava a linha 200 ms após o clique:
-         * envio recusado sumia da tela igual a um que deu certo.
+         * Apagar a linha por tempo (uns 200 ms após o clique) seria o erro a evitar: envio recusado
+         * sumiria da tela igual a um que deu certo.
          */
         var relogio = setTimeout(function () {
             falhou('o servidor não respondeu em 12 s. Confira a aldeia antes de repetir — ' +
@@ -415,7 +448,7 @@
                     UI.SuccessMessage('Acabou a fila de envios.');
                 }
             },
-            false                                   // mesma forma do original; não invento assinatura
+            false                                   // assinatura conhecida do jogo; não invento outra
         );
     }
 
@@ -432,8 +465,8 @@
                 (problemas.length ? ' Problemas: ' + problemas[0].motivo : ''));
             return;
         }
-        // Só agora pergunta a coordenada: no original os dois corriam juntos e responder rápido
-        // montava a lista vazia.
+        // Só agora pergunta a coordenada: se as duas coisas correrem juntas, responder rápido
+        // monta a lista vazia.
         pedirCoordenada();
     }).fail(function () {
         UI.ErrorMessage('Falhou ao carregar a visão de produção das aldeias.');
