@@ -378,13 +378,17 @@
             '<td class="cunhNum"><span class="icon header stone"></span> <b id="cunh-ta">0</b></td>' +
             '<td class="cunhNum"><span class="icon header iron"></span> <b id="cunh-tf">0</b></td>' +
             '</tr></table></div>' +
-            '<div style="margin:0 0 8px;padding:6px;background:#ece0c0;border-radius:4px">' +
+            // Flex com quebra: no celular os controles descem em linhas em vez de estourar a
+            // largura. Nada aqui entra em container rolável — botão que exige rolar de lado para
+            // ser alcançado é botão que não existe.
+            '<div id="cunh-lote-barra" style="margin:0 0 8px;padding:6px;background:#ece0c0;' +
+            'border-radius:4px;display:flex;flex-wrap:wrap;align-items:center;gap:6px">' +
             '<button type="button" class="btn btn-confirm-yes" id="cunh-tudo" ' +
-            'style="font-weight:bold">Enviar tudo</button> ' +
-            '<button type="button" class="btn" id="cunh-parar" style="display:none">Parar</button> ' +
-            '<span style="margin-left:8px">pausa entre envios: ' +
-            '<input type="text" id="cunh-pausa" size="4" value="' + PAUSA_PADRAO + '"> ms</span> ' +
-            '<span id="cunh-status" style="margin-left:10px;color:#603000"></span>' +
+            'style="font-weight:bold">Enviar tudo</button>' +
+            '<button type="button" class="btn" id="cunh-parar" style="display:none">Parar</button>' +
+            '<span>pausa: <input type="text" id="cunh-pausa" size="4" value="' +
+            PAUSA_PADRAO + '"> ms</span>' +
+            '<span id="cunh-status" style="color:#603000;flex:1 1 100%"></span>' +
             '</div>';
 
         var html = CSS +
@@ -501,9 +505,18 @@
                 if (typeof Dialog !== 'undefined' && Dialog.close) Dialog.close();
                 UI.SuccessMessage((resp && resp.message) || 'Enviado.');
                 enviado.madeira += q.madeira; enviado.argila += q.argila; enviado.ferro += q.ferro;
-                document.getElementById('cunh-tm').textContent = fmt(enviado.madeira);
-                document.getElementById('cunh-ta').textContent = fmt(enviado.argila);
-                document.getElementById('cunh-tf').textContent = fmt(enviado.ferro);
+                /*
+                 * Com guarda porque o painel pode ter sumido entre o clique e a resposta — o app
+                 * do celular refaz a tela sozinho, e navegar durante o lote tem o mesmo efeito.
+                 * Sem isso, um TypeError aqui dentro engoliria o aviso de conclusão e o lote
+                 * ficaria pendurado em "Enviando…" para sempre.
+                 */
+                var elM = document.getElementById('cunh-tm');
+                var elA = document.getElementById('cunh-ta');
+                var elF = document.getElementById('cunh-tf');
+                if (elM) elM.textContent = fmt(enviado.madeira);
+                if (elA) elA.textContent = fmt(enviado.argila);
+                if (elF) elF.textContent = fmt(enviado.ferro);
                 var tr = document.getElementById('cunh-linha-' + i);
                 if (tr && tr.parentNode) tr.parentNode.removeChild(tr);
                 if (!document.querySelectorAll('#cunhagem-lista tr').length) {
@@ -561,6 +574,13 @@
     function passoDoLote() {
         if (!lote.rodando) return;
         if (lote.parar) { terminarLote('parado por você'); return; }
+        // Painel sumiu (tela refeita pelo app, navegação): encerra em vez de seguir no escuro.
+        if (!document.getElementById('cunhagem-lista')) {
+            lote.rodando = false;
+            UI.ErrorMessage('O painel saiu da tela e o lote parou. Foram ' + lote.ok +
+                ' envio(s) confirmado(s) antes disso.');
+            return;
+        }
         var restantes = botoesPendentes();
         if (!restantes.length) { terminarLote('fila vazia'); return; }
         var total = lote.ok + lote.falhas + restantes.length;
