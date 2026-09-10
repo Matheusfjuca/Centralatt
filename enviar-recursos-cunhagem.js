@@ -20,7 +20,11 @@
  * 4. Aldeia cujos dados não foram lidos por completo NÃO entra na lista, e aparece num aviso.
  *    Mandar recurso errado não tem desfazer, então na dúvida o script se recusa a calcular.
  *
- * 5. Distância separa a coordenada no "|" em vez de fatiar por posição fixa — coordenada de 2
+ * 5. A lista sai ORDENADA por distância (mais perto primeiro) e aceita uma TRAVA de alcance.
+ *    O que fica além do limite some da tela — e, com isso, sai também do "Enviar tudo", que
+ *    trabalha em cima do que está visível. Um lugar só para cortar.
+ *
+ * 6. Distância separa a coordenada no "|" em vez de fatiar por posição fixa — coordenada de 2
  *    dígitos quebraria o corte por índice.
  */
 (function () {
@@ -317,6 +321,23 @@
         return isFinite(v) && v >= 0 && v <= 100 ? v : 0;
     }
 
+    /*
+     * TRAVA DE DISTÂNCIA — o limite vive numa VARIÁVEL, não só no campo da tela.
+     *
+     * `montarLista()` começa apagando o painel inteiro, e o campo de distância vai junto. Se o
+     * valor fosse lido do DOM lá dentro, ele já teria sumido — e o limite voltaria a "sem limite"
+     * exatamente na hora de aplicá-lo. O campo é só a entrada; quem manda é isto aqui.
+     */
+    var distMaxAtual = null;
+
+    function lerCampoDistancia() {
+        var el = document.getElementById('cunh-distmax');
+        if (!el) return distMaxAtual;
+        var v = parseFloat(String(el.value).replace(',', '.'));
+        distMaxAtual = (isFinite(v) && v > 0) ? v : null;   // vazio ou zero = sem limite
+        return distMaxAtual;
+    }
+
     function montarLista() {
         var antigo = document.getElementById('cunhagem-painel');
         if (antigo) antigo.parentNode.removeChild(antigo);
@@ -324,16 +345,38 @@
         var lim = limite();
         var linhas = '';
         var enviaveis = 0;
+        var dmax = distMaxAtual;
+        var cortadasPelaDistancia = 0;
 
+        /*
+         * ORDEM: da mais PERTO para a mais longe.
+         *
+         * A lista saía na ordem da visão de produção, que é a ordem das aldeias na conta — sem
+         * relação com o que interessa aqui. Ordenar por distância põe em cima o transporte que
+         * CHEGA ANTES, e é nessa ordem que o "Enviar tudo" despacha.
+         *
+         * O índice original (`i`) viaja junto: ele é a chave de `aldeias[i]` usada nos ids das
+         * linhas e no `data-i` dos botões. Ordenar sem carregá-lo faria os botões apontarem para
+         * a aldeia errada — e este é o código que move recurso.
+         */
+        var candidatas = [];
         aldeias.forEach(function (a, i) {
             if (String(a.id) === String(alvo.id)) return;          // não manda pra si mesma
+            candidatas.push({ a: a, i: i, d: distancia(alvo.x, alvo.y, a.x, a.y) });
+        });
+        candidatas.sort(function (x, y) { return x.d - y.d; });
+
+        candidatas.forEach(function (item) {
+            var a = item.a, i = item.i, d = item.d;
+            // O corte vem ANTES de tudo: fora da lista, a aldeia sai também do "Enviar tudo".
+            if (dmax !== null && d > dmax) { cortadasPelaDistancia++; return; }
             var q = quantoMandar(a, lim);
             if (q.madeira + q.argila + q.ferro <= 0) return;
             enviaveis++;
-            linhas += '<tr id="cunh-linha-' + i + '" class="' + (i % 2 ? 'cunhA' : 'cunhB') + '">' +
+            linhas += '<tr id="cunh-linha-' + i + '" class="' + (enviaveis % 2 ? 'cunhA' : 'cunhB') + '">' +
                 '<td><a href="' + (a.url || '#') + '" class="cunhLink">' + a.nome + '</a></td>' +
                 '<td class="cunhDest"><span class="cunhLink">' + alvo.nome + '</span></td>' +
-                '<td style="text-align:center">' + distancia(alvo.x, alvo.y, a.x, a.y) + '</td>' +
+                '<td style="text-align:center">' + d + '</td>' +
                 '<td style="text-align:right">' + fmt(q.madeira) + ' <span class="icon header wood"></span></td>' +
                 '<td style="text-align:right">' + fmt(q.argila) + ' <span class="icon header stone"></span></td>' +
                 '<td style="text-align:right">' + fmt(q.ferro) + ' <span class="icon header iron"></span></td>' +
@@ -388,6 +431,12 @@
             '<button type="button" class="btn" id="cunh-parar" style="display:none">Parar</button>' +
             '<span>pausa: <input type="text" id="cunh-pausa" size="4" value="' +
             PAUSA_PADRAO + '"> ms</span>' +
+            // O campo nasce com o limite EM USO, para o número não sumir da tela logo depois
+            // de fazer efeito (a lista é remontada a cada aplicação).
+            '<span title="Só aparecem aldeias até esta distância do destino. Vazio = sem limite.">' +
+            'até <input type="text" id="cunh-distmax" size="4" value="' +
+            (distMaxAtual === null ? '' : distMaxAtual) + '"> campos</span>' +
+            '<button type="button" class="btn" id="cunh-aplicar-dist">Aplicar</button>' +
             '<span id="cunh-status" style="color:#603000;flex:1 1 100%"></span>' +
             '</div>';
 
@@ -402,6 +451,8 @@
             '<th class="cunhH" style="text-align:right">Ferro</th>' +
             '<th class="cunhH" style="text-align:center">Ação</th></tr>' +
             '<tbody id="cunhagem-lista">' + linhas + '</tbody></table></div>' +
+            (cortadasPelaDistancia ? '<div style="padding:4px 6px;margin-top:6px;font-size:11px;color:#7a5c2e">' +
+                cortadasPelaDistancia + ' aldeia(s) fora do alcance de ' + dmax + ' campos não aparecem.</div>' : '') +
             (enviaveis ? '' : '<div class="cunhErro" style="padding:6px;margin-top:6px">Nenhuma aldeia ' +
                 'tem recurso disponível acima do limite escolhido.</div>') +
             '</div>';
@@ -442,6 +493,12 @@
         });
 
         document.getElementById('cunh-tudo').onclick = confirmarLote;
+
+        var btDist = document.getElementById('cunh-aplicar-dist');
+        if (btDist) btDist.onclick = function () {
+            lerCampoDistancia();      // do campo para a variável, ANTES de remontar a lista
+            montarLista();
+        };
         document.getElementById('cunh-parar').onclick = function () {
             lote.parar = true;
             pintarLote('Parando depois do envio em curso…');
