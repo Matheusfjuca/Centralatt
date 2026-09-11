@@ -1,0 +1,99 @@
+/*
+ * CARREGADOR do Apoio em Massa para a BARRA RÁPIDA do jogo (e, por tabela, para o app).
+ *
+ * ────────────────────────────────────────────────────────────────────────────────────────────
+ * POR QUE ISTO EXISTE
+ *
+ * A barra rápida só aceita URL PÚBLICA — ela não tem como carregar um script protegido. Mas o
+ * script de verdade não pode ser público: ele despacha a defesa da tribo inteira com um clique.
+ *
+ * A saída é separar as duas coisas. ESTE arquivo é público e não vale nada sozinho: são 30 linhas
+ * que só perguntam à VPS "quem está pedindo?" e executam o que ela mandar. Quem não for da tribo
+ * autorizada recebe 403 e fica com um alerta na tela.
+ *
+ * Ou seja: a barra rápida carrega o CARREGADOR; a VPS continua decidindo quem pode ter o script.
+ * A validação não mudou de lugar — só o caminho até ela.
+ * ────────────────────────────────────────────────────────────────────────────────────────────
+ *
+ * COMO INSTALAR NA BARRA RÁPIDA
+ *
+ *   Configurações > Barra de acesso rápido > novo item, com este endereço:
+ *
+ *     javascript:$.getScript('https://raw.githubusercontent.com/Matheusfjuca/Centralatt/main/apoio-em-massa-barra.js');void(0);
+ *
+ *   (o nome do arquivo no Centralatt pode ser outro — o que importa é apontar pra ESTE conteúdo)
+ *
+ * ⚠️ O que dá pra deduzir daqui, e é aceito: que existe um script chamado `apoio-em-massa.js` na
+ * nossa VPS. É tudo. Sem tribo autorizada, o endereço não entrega nada.
+ */
+
+(function () {
+    'use strict';
+
+    var VPS = 'https://aposentados.centraltw.com.br/';
+    var ARQUIVO = 'apoio-em-massa.js';
+    var PASTA = 'players';
+
+    function avisar(txt) {
+        try {
+            if (window.UI && UI.ErrorMessage) { UI.ErrorMessage(txt, 4000); return; }
+        } catch (e) { /* segue pro alert */ }
+        alert(txt);
+    }
+
+    /*
+     * `game_data` é do jogo. Sem ele, ou estamos fora da página do jogo, ou a página ainda não
+     * terminou de carregar — nos dois casos não dá pra saber quem está pedindo.
+     */
+    var g = window.game_data || (typeof unsafeWindow !== 'undefined' && unsafeWindow.game_data);
+    if (!g || !g.player || !g.player.name) {
+        avisar('Apoio em Massa: abra pela tela do jogo (não consegui identificar sua conta).');
+        return;
+    }
+
+    /*
+     * A tela certa é a Praça de Reunião > Apoio em massa. Avisar ANTES de baixar evita o caso
+     * confuso de "cliquei e não apareceu nada" — o script até carregaria, mas sairia calado por
+     * não ser a tela dele.
+     */
+    if (!/screen=place/.test(location.search) || !/mode=call/.test(location.search)) {
+        avisar('Apoio em Massa: abra a Praça de Reunião > Apoio em massa e clique de novo.');
+        return;
+    }
+    if (document.getElementById('apm-marca')) {
+        avisar('Apoio em Massa já está aberto nesta tela.');
+        return;
+    }
+
+    var url = VPS +
+        '?nick=' + encodeURIComponent(g.player.name) +
+        '&mundo=' + encodeURIComponent(g.world || '') +
+        '&tribo=' +
+        '&triboId=' + encodeURIComponent(g.player.ally || '') +
+        '&pasta=' + PASTA +
+        '&arquivo=' + encodeURIComponent(ARQUIVO) +
+        '&v=barra';
+
+    fetch(url, { credentials: 'omit' })
+        .then(function (r) {
+            /*
+             * Cada recusa tem um motivo diferente e a pessoa precisa saber qual — "não funcionou"
+             * manda ela mexer no lugar errado.
+             */
+            if (r.status === 403) throw new Error('sua conta ou tribo não está autorizada');
+            if (r.status === 404) throw new Error('o script não está na VPS (avise a liderança)');
+            if (!r.ok) throw new Error('a VPS respondeu ' + r.status);
+            return r.text();
+        })
+        .then(function (codigo) {
+            if (!codigo || codigo.length < 500) throw new Error('a VPS mandou uma resposta vazia');
+            /*
+             * Executa em escopo próprio. `eval` direto aqui herdaria o escopo deste carregador e
+             * um `var` do script poderia colidir com os daqui.
+             */
+            (new Function(codigo))();
+        })
+        .catch(function (e) {
+            avisar('Apoio em Massa: ' + (e && e.message ? e.message : e));
+        });
+})();
