@@ -98,3 +98,45 @@
     /* ---------- o painel do script ---------- */
     diz('#apm-marca', conta('#apm-marca'));
     diz('#apm-painel', conta('#apm-painel'));
+
+    /* ---------- mostra na tela, selecionável ---------- */
+    var texto = L.join('\n');
+    var velho = document.getElementById('apm-diag');
+    if (velho) velho.remove();
+
+    var cx = document.createElement('div');
+    cx.id = 'apm-diag';
+    cx.setAttribute('style',
+        'position:fixed;left:2vw;top:2vh;width:96vw;height:88vh;z-index:99999;background:#2b2116;' +
+        'border:2px solid #8a5c14;border-radius:6px;padding:8px;box-sizing:border-box;' +
+        'font:12px monospace;color:#e8dcc0;display:flex;flex-direction:column;gap:6px');
+
+    var topo = document.createElement('div');
+    topo.setAttribute('style', 'display:flex;gap:6px;align-items:center');
+    topo.innerHTML = '<b style="flex:1">Diagnóstico do Apoio em Massa</b>';
+
+    var bc = document.createElement('button');
+    bc.textContent = 'Selecionar tudo';
+    bc.setAttribute('style', 'padding:6px 10px');
+    var bf = document.createElement('button');
+    bf.textContent = 'Fechar';
+    bf.setAttribute('style', 'padding:6px 10px');
+    topo.appendChild(bc); topo.appendChild(bf);
+
+    var ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.setAttribute('style', 'flex:1;width:100%;box-sizing:border-box;font:11px monospace;' +
+        'background:#191309;color:#f0e6cd;border:1px solid #6b4a14;padding:6px');
+
+    bc.onclick = function () {
+        ta.focus();
+        ta.select();
+        try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+        try { document.execCommand('copy'); bc.textContent = 'Copiado!'; } catch (e) { bc.textContent = 'Selecionado'; }
+    };
+    bf.onclick = function () { cx.remove(); };
+
+    cx.appendChild(topo);
+    cx.appendChild(ta);
+    document.body.appendChild(cx);
+})();
