@@ -429,8 +429,11 @@
             '<button type="button" class="btn btn-confirm-yes" id="cunh-tudo" ' +
             'style="font-weight:bold">Enviar tudo</button>' +
             '<button type="button" class="btn" id="cunh-parar" style="display:none">Parar</button>' +
-            '<span>pausa: <input type="text" id="cunh-pausa" size="4" value="' +
-            PAUSA_PADRAO + '"> ms</span>' +
+            '<span title="Intervalo entre um envio e outro no Enviar tudo. Mínimo ' + PAUSA_PISO +
+            ' ms. Fica guardado neste navegador.">pausa: <input type="text" id="cunh-pausa" size="4" value="' +
+            pausaGuardada() + '"> ms</span>' +
+            '<span style="font-size:11px;color:#5a4020" title="Cada Enter manda a PRÓXIMA aldeia da lista — um envio por tecla, ' +
+            'igual ao clique. Segurar o Enter vai disparando em sequência, um de cada vez.">⏎ <b>Enter</b> envia a próxima</span>' +
             // O campo nasce com o limite EM USO, para o número não sumir da tela logo depois
             // de fazer efeito (a lista é remontada a cada aplicação).
             '<span title="Só aparecem aldeias até esta distância do destino. Vazio = sem limite.">' +
@@ -494,6 +497,12 @@
 
         document.getElementById('cunh-tudo').onclick = confirmarLote;
 
+        // Pausa: guarda assim que muda (e corrige o campo se ficou abaixo do piso).
+        var cpPausa = document.getElementById('cunh-pausa');
+        if (cpPausa) cpPausa.onchange = function () { pausaEscolhida(); };
+
+        ligarEnter();
+
         var btDist = document.getElementById('cunh-aplicar-dist');
         if (btDist) btDist.onclick = function () {
             lerCampoDistancia();      // do campo para a variável, ANTES de remontar a lista
@@ -503,6 +512,46 @@
             lote.parar = true;
             pintarLote('Parando depois do envio em curso…');
         };
+    }
+
+    // ---------- Enter = envia a próxima (como no script do Shinko to Kuma) ----------
+    /*
+     * Cada Enter manda a PRÓXIMA aldeia pendente da lista: um envio por tecla, exatamente o que o
+     * clique no botão faz. Segurar o Enter vai disparando em sequência.
+     *
+     * Regras, cada uma com motivo:
+     *   - UM envio por vez: enquanto o anterior não responde, Enter é ignorado. A repetição da
+     *     tecla (~30 por segundo) dispararia vários pedidos juntos — a mesma rajada que a pausa do
+     *     lote existe pra evitar, e o jogo começa a recusar.
+     *   - Pula o que falhou (mesma fila do "Enviar tudo": `botoesPendentes` já tira os
+     *     `data-falhou`), senão o Enter ficaria batendo na mesma aldeia quebrada.
+     *   - Enter DIGITANDO num campo (coordenada, pausa, distância) é do campo, não envia nada.
+     *   - Com o lote rodando, não envia (contaria em dobro e mandaria dois ao mesmo tempo).
+     *   - Com janela aberta (a confirmação do "Enviar tudo"), o Enter é dela.
+     *   - `preventDefault`: sem ele, o Enter também "clica" no botão que estiver com foco — o
+     *     mesmo envio sairia duas vezes.
+     * Um ouvinte só, no documento: o painel é remontado a cada envio/aplicar.
+     */
+    var enviandoPorEnter = false;
+    function ligarEnter() {
+        if (window.__cunhEnterLigado) return;
+        window.__cunhEnterLigado = true;
+        document.addEventListener('keydown', function (ev) {
+            if (ev.key !== 'Enter' && ev.keyCode !== 13) return;
+            if (ev.ctrlKey || ev.altKey || ev.metaKey || ev.shiftKey) return;
+            if (!document.getElementById('cunhagem-lista')) return;          // painel fechado
+            if (document.getElementById('cunh-lote-sim') || document.querySelector('.popup_box_container')) return;
+            var t = ev.target;
+            var tipo = t && t.type ? String(t.type).toLowerCase() : '';
+            if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable ||
+                (t.tagName === 'INPUT' && tipo !== 'button' && tipo !== 'submit' && tipo !== 'checkbox'))) return;
+            ev.preventDefault();
+            if (lote.rodando || enviandoPorEnter) return;
+            var prox = botoesPendentes()[0];
+            if (!prox) { UI.InfoMessage ? UI.InfoMessage('Nada pendente na lista.') : null; return; }
+            enviandoPorEnter = true;
+            enviar(prox, function () { enviandoPorEnter = false; });
+        });
     }
 
     // ---------- envio ----------
@@ -600,12 +649,34 @@
      */
     var lote = { rodando: false, parar: false, ok: 0, falhas: 0, seguidas: 0 };
     var PAUSA_PADRAO = 1500;
+    /*
+     * Piso da pausa. Abaixo dele, o valor digitado vira o PISO — não volta pro padrão.
+     *
+     * Antes, qualquer coisa abaixo de 300 caía calada em 1.500: quem digitava 200 achando que ia
+     * acelerar ficava com o lote SETE vezes mais lento, sem aviso, e a sensação era "não consigo
+     * baixar de 1.500". 200 ms = 5 envios por segundo, o ritmo que o jogo aguenta sem reclamar.
+     */
+    var PAUSA_PISO = 200;
+    var CHAVE_PAUSA = 'cunhagem_pausa_ms';
+
+    function normalizarPausa(v) {
+        v = parseInt(v, 10);
+        if (!isFinite(v)) return PAUSA_PADRAO;
+        return Math.min(Math.max(v, PAUSA_PISO), 60000);
+    }
+    // A pausa escolhida fica guardada (antes voltava pra 1.500 toda vez que o painel abria).
+    function pausaGuardada() {
+        try { var s = localStorage.getItem(CHAVE_PAUSA); if (s !== null) return normalizarPausa(s); } catch (e) { }
+        return PAUSA_PADRAO;
+    }
 
     function pausaEscolhida() {
         var el = document.getElementById('cunh-pausa');
-        var v = el ? parseInt(el.value, 10) : NaN;
-        if (!isFinite(v) || v < 300) return PAUSA_PADRAO;      // piso: rajada não ajuda ninguém
-        return Math.min(v, 60000);
+        var v = normalizarPausa(el ? el.value : NaN);
+        // Mostra no campo o valor que vai valer de fato (ex.: digitou 50 → fica 200).
+        if (el && String(v) !== String(el.value).trim()) el.value = String(v);
+        try { localStorage.setItem(CHAVE_PAUSA, String(v)); } catch (e) { }
+        return v;
     }
 
     function botoesPendentes() {
