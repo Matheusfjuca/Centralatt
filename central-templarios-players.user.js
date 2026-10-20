@@ -10,6 +10,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
+// @grant        GM_registerMenuCommand
+// @grant        unsafeWindow
 // @updateURL    https://raw.githubusercontent.com/Matheusfjuca/centralatt/main/central-templarios-players.user.js
 // @downloadURL  https://raw.githubusercontent.com/Matheusfjuca/centralatt/main/central-templarios-players.user.js
 // @run-at       document-end
