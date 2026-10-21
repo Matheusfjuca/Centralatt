@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Scripts APOSENTADOS
 // @namespace    tw-scripts-manager-aposentados-unificado
-// @version      7.1
+// @version      7.3
 // @description  Gerenciador ÚNICO APOSENTADOS — abas Tribo (Liderança) e Players num painel só. Substitui os 2 gerenciadores separados.
 // @author       APOSENTADOS
-// @note         7.1: 🧰 Lançador — um botão só que expande os botões dos scripts em qualquer página e carregados só quando você abre; atalhos "↪ ir para a tela" dos scripts presos a uma tela; opção 📌 botão próprio por script. O Hub ⚔️ continua como era · 7.02: card do app atualizado (quem usa o "atende o celular" e a dica do PC braço: auto 30 min + aba atrás); aviso de versão nova entende 7.02 → 7.1 · 7.01: modo motor — a sala do celular funciona mesmo com a Central de Defesa desligada (sem escudo); link do app em /app · 7.0: app no celular (card com link, QR e a senha da sala — a Central de Defesa usa ela direto), novo Raio-X Inimigo (VIP), ferramentas de liderança atendendo o celular, Chegando com torre e filtro de data
+// @note         7.3: 🧰 Lançador — um botão só que expande os botões dos scripts em qualquer página e carregados só quando você abre; atalhos "↪ ir para a tela" dos scripts presos a uma tela; opção 📌 botão próprio por script. O Hub ⚔️ continua como era · 7.02: card do app atualizado (quem usa o "atende o celular" e a dica do PC braço: auto 30 min + aba atrás); aviso de versão nova entende 7.02 → 7.1 · 7.01: modo motor — a sala do celular funciona mesmo com a Central de Defesa desligada (sem escudo); link do app em /app · 7.0: app no celular (card com link, QR e a senha da sala — a Central de Defesa usa ela direto), novo Raio-X Inimigo (VIP), ferramentas de liderança atendendo o celular, Chegando com torre e filtro de data
 // @minVersion   0
 // @match        *://*.tribalwars.com.br/*
 // @updateURL    https://github.com/Matheusfjuca/Centralatt/raw/refs/heads/main/aposunificado.user.js
